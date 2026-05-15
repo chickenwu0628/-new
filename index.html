@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>發票辨識工具 — VITAL 報帳助手</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green: #1a7a5e;
+    --green-light: #e8f5f1;
+    --green-mid: #2da882;
+    --green-dark: #0f5441;
+    --amber: #c8720a;
+    --amber-light: #fef3e2;
+    --red: #c0392b;
+    --red-light: #fdecea;
+    --gray-50: #f7f8f9;
+    --gray-100: #eef0f2;
+    --gray-200: #dde1e6;
+    --gray-400: #9aa3ad;
+    --gray-600: #5a6472;
+    --gray-800: #2c3340;
+    --white: #ffffff;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.10);
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', sans-serif;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* HEADER */
+  .header {
+    background: var(--green-dark);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: white;
+  }
+  .header-logo-icon {
+    width: 30px; height: 30px;
+    background: var(--green-mid);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .header-logo-text { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
+  .header-logo-sub { font-size: 11px; color: rgba(255,255,255,0.55); margin-top: 1px; }
+  .header-actions { display: flex; gap: 10px; align-items: center; }
+  .btn-settings {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: white;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .btn-settings:hover { background: rgba(255,255,255,0.2); }
+  .api-status {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: rgba(255,255,255,0.7);
+  }
+  .api-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .api-dot.ok { background: #5de8b0; }
+  .api-dot.missing { background: #f5a623; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* MAIN LAYOUT */
+  .main { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 700px) { .layout { grid-template-columns: 1fr; } }
+
+  /* CARD */
+  .card {
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-200);
+    overflow: hidden;
+  }
+  .card-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--gray-100);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-head-icon { font-size: 16px; }
+  .card-head-title { font-size: 13px; font-weight: 700; color: var(--gray-800); }
+  .card-head-sub { font-size: 11px; color: var(--gray-400); margin-left: auto; }
+  .card-body { padding: 18px; }
+
+  /* UPLOAD */
+  .upload-zone {
+    border: 2px dashed var(--gray-200);
+    border-radius: var(--radius);
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--gray-50);
+    position: relative;
+  }
+  .upload-zone:hover { border-color: var(--green-mid); background: var(--green-light); }
+  .upload-zone.dragover { border-color: var(--green); background: var(--green-light); transform: scale(1.01); }
+  .upload-zone.has-image { padding: 8px; }
+  .upload-icon { font-size: 36px; margin-bottom: 8px; }
+  .upload-label { font-size: 14px; font-weight: 600; color: var(--gray-600); }
+  .upload-hint { font-size: 11px; color: var(--gray-400); margin-top: 4px; }
+  .preview-img { width: 100%; max-height: 260px; object-fit: contain; border-radius: var(--radius-sm); display: none; }
+  .upload-replace { font-size: 11px; color: var(--green); margin-top: 6px; cursor: pointer; text-align: center; display: none; }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--green); color: white; }
+  .btn-primary:hover { background: var(--green-dark); }
+  .btn-primary:disabled { background: var(--gray-200); color: var(--gray-400); cursor: not-allowed; }
+  .btn-outline { background: white; color: var(--gray-600); border: 1px solid var(--gray-200); }
+  .btn-outline:hover { background: var(--gray-50); border-color: var(--gray-400); }
+  .btn-danger { background: var(--red-light); color: var(--red); }
+  .btn-danger:hover { background: #fbd5d1; }
+  .btn-copy { background: var(--amber-light); color: var(--amber); }
+  .btn-copy:hover { background: #fde8c0; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+  /* STATUS */
+  .status {
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    margin-top: 12px;
+    display: none;
+    line-height: 1.5;
+  }
+  .status.info { background: #e8f4fd; color: #1565c0; display: block; }
+  .status.success { background: var(--green-light); color: var(--green-dark); display: block; }
+  .status.error { background: var(--red-light); color: var(--red); display: block; }
+  .status.warn { background: var(--amber-light); color: var(--amber); display: block; }
+  .progress-wrap { height: 4px; background: var(--gray-100); border-radius: 2px; margin-top: 10px; display: none; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--green-mid), var(--green)); width: 0%; transition: width 0.4s; border-radius: 2px; }
+
+  /* FIELDS */
+  .fields-section { display: flex; flex-direction: column; gap: 12px; }
+  .field-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field-item { display: flex; flex-direction: column; gap: 4px; }
+  .field-item.full { grid-column: 1 / -1; }
+  .field-label {
+    font-size: 11px; font-weight: 600; color: var(--gray-400);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .field-label .conf {
+    font-size: 10px; font-weight: 500; padding: 1px 5px;
+    border-radius: 3px; letter-spacing: 0;
+    text-transform: none;
+  }
+  .conf-high { background: var(--green-light); color: var(--green-dark); }
+  .conf-med { background: var(--amber-light); color: var(--amber); }
+  .field-input {
+    padding: 8px 10px;
+    border: 1.5px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+    color: var(--gray-800);
+    background: white;
+    transition: border-color 0.15s;
+    outline: none;
+  }
+  .field-input:focus { border-color: var(--green); }
+  .field-input.auto-filled { border-color: var(--green-mid); background: var(--green-light); }
+  .field-input.needs-check { border-color: var(--amber); background: var(--amber-light); }
+
+  /* DIVIDER */
+  .divider { height: 1px; background: var(--gray-100); margin: 16px 0; }
+
+  /* MODAL / SETTINGS */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 200;
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    width: 100%; max-width: 440px;
+    padding: 24px;
+  }
+  .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .modal-sub { font-size: 12px; color: var(--gray-400); margin-bottom: 20px; line-height: 1.6; }
+  .modal-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .modal-input:focus { border-color: var(--green); }
+  .modal-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+  .modal-note {
+    font-size: 11px; color: var(--gray-400);
+    background: var(--gray-50); padding: 10px 12px;
+    border-radius: var(--radius-sm); margin-top: 14px;
+    line-height: 1.6;
+  }
+  .modal-note a { color: var(--green); text-decoration: none; }
+  .modal-note a:hover { text-decoration: underline; }
+
+  /* RESULT SUMMARY */
+  .result-summary {
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    margin-top: 12px;
+    display: none;
+  }
+  .result-summary.show { display: block; }
+  .summary-row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: 12px; }
+  .summary-label { color: var(--gray-400); }
+  .summary-val { font-family: 'DM Mono', monospace; font-weight: 500; font-size: 13px; }
+  .summary-total { border-top: 1px solid var(--gray-200); margin-top: 6px; padding-top: 6px; }
+  .summary-total .summary-val { font-size: 15px; color: var(--green-dark); font-weight: 700; }
+
+  /* COPY SUCCESS */
+  .copy-toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--green-dark); color: white;
+    padding: 10px 20px; border-radius: 20px;
+    font-size: 13px; font-weight: 600;
+    opacity: 0; transition: opacity 0.3s;
+    pointer-events: none; z-index: 300;
+  }
+  .copy-toast.show { opacity: 1; }
+
+  /* VITAL HELP */
+  .vital-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .vital-step {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--gray-50); border-radius: var(--radius-sm);
+    padding: 8px 12px; font-size: 12px;
+  }
+  .step-num {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--green); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+  }
+  .step-text { color: var(--gray-600); line-height: 1.5; }
+  .step-text strong { color: var(--gray-800); }
+
+  /* RAW TEXT TOGGLE */
+  .raw-toggle { font-size: 11px; color: var(--green); cursor: pointer; margin-top: 8px; display: none; }
+  .raw-toggle:hover { text-decoration: underline; }
+  .raw-text {
+    background: var(--gray-50);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    font-size: 11px; font-family: 'DM Mono', monospace;
+    color: var(--gray-400);
+    max-height: 80px; overflow-y: auto;
+    margin-top: 6px; display: none;
+    white-space: pre-wrap; word-break: break-all;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-logo">
+    <div class="header-logo-icon">📄</div>
+    <div>
+      <div class="header-logo-text">發票辨識助手</div>
+      <div class="header-logo-sub">VITAL ERP 報帳工具 × Gemini Vision</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <div class="api-status">
+      <div class="api-dot" id="api-dot"></div>
+      <span id="api-status-text">尚未設定 API Key</span>
+    </div>
+    <button class="btn-settings" onclick="openSettings()">⚙ 設定 API Key</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="layout">
+
+    <!-- LEFT: Upload + OCR -->
+    <div>
+      <div class="card">
+        <div class="card-head">
+          <span class="card-head-icon">📷</span>
+          <span class="card-head-title">上傳發票</span>
+          <span class="card-head-sub">Google Gemini Vision</span>
+        </div>
+        <div class="card-body">
+          <div class="upload-zone" id="upload-zone"
+            onclick="document.getElementById('file-input').click()"
+            ondragover="handleDragOver(event)"
+            ondragleave="handleDragLeave(event)"
+            ondrop="handleDrop(event)">
+            <div class="upload-icon">🧾</div>
+            <div class="upload-label">點擊拍照或選擇圖片</div>
+            <div class="upload-hint">支援 JPG、PNG｜手機可直接拍照</div>
+            <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none" onchange="handleFile(event)">
+          </div>
+          <img id="preview-img" class="preview-img" alt="發票預覽">
+          <div class="upload-replace" id="upload-replace" onclick="document.getElementById('file-input').click()">▲ 點擊重新選擇圖片</div>
+
+          <div class="progress-wrap" id="progress-wrap">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="status" id="status"></div>
+
+          <div class="raw-toggle" id="raw-toggle" onclick="toggleRaw()">▼ 查看原始辨識文字</div>
+          <div class="raw-text" id="raw-text"></div>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btn-ocr" onclick="runOCR()" disabled>
+              🔍 開始辨識
+            </button>
+            <button class="btn btn-outline" id="btn-clear" onclick="clearAll()" disabled>
+              清除
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- VITAL 操作說明 -->
+      <div class="card" style="margin-top:16px;">
+        <div class="card-head">
+          <span class="card-head-icon">💡</span>
+          <span class="card-head-title">如何填入 VITAL</span>
+        </div>
+        <div class="card-body">
+          <div class="vital-steps">
+            <div class="vital-step">
+              <div class="step-num">1</div>
+              <div class="step-text">在本工具上傳發票照片，點擊<strong>開始辨識</strong></div>
+            </div>
+            <div class="vital-step">
+              <div class="step-num">2</div>
+              <div class="step-text">確認右側欄位資料正確（<span style="color:var(--amber)">橙色</span>欄位需人工確認）</div>
+            </div>
+            <div class="vital-step">
+              <div class="step-num">3</div>
+              <div class="step-text">點擊<strong>複製全部欄位</strong>，開啟 VITAL 付款申請-新增</div>
+            </div>
+            <div class="vital-step">
+              <div class="step-num">4</div>
+              <div class="step-text">依序貼入：<strong>開立日期、字軌/憑證號碼、廠商統編、銷售金額、營業稅額</strong></div>
+            </div>
+            <div class="vital-step">
+              <div class="step-num">5</div>
+              <div class="step-text">上傳發票照片作為附件，點擊<strong>暫存</strong>或<strong>簽核送出</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Fields + Summary -->
+    <div>
+      <div class="card">
+        <div class="card-head">
+          <span class="card-head-icon">📋</span>
+          <span class="card-head-title">報帳欄位</span>
+          <span class="card-head-sub" id="field-count" style="color:var(--gray-400)">尚未辨識</span>
+        </div>
+        <div class="card-body">
+          <div class="fields-section">
+
+            <div class="field-group">
+              <div class="field-item">
+                <div class="field-label">
+                  開立日期
+                  <span class="conf conf-high" id="conf-date" style="display:none">自動</span>
+                  <span style="margin-left:auto; display:flex; gap:4px;">
+                    <span id="fmt-roc" onclick="setDateFmt('roc')" style="cursor:pointer;font-size:10px;padding:2px 6px;border-radius:10px;background:#1a7a5e;color:white;font-weight:600;">民國</span>
+                    <span id="fmt-ad" onclick="setDateFmt('ad')" style="cursor:pointer;font-size:10px;padding:2px 6px;border-radius:10px;background:var(--gray-100);color:var(--gray-400);font-weight:600;">西元</span>
+                  </span>
+                </div>
+                <input class="field-input" id="f-date" type="text" placeholder="113/05/10">
+              </div>
+              <div class="field-item">
+                <div class="field-label">
+                  字軌／憑證號碼
+                  <span class="conf conf-high" id="conf-inv" style="display:none">自動</span>
+                </div>
+                <input class="field-input" id="f-invoice" type="text" placeholder="AB-12345678">
+              </div>
+            </div>
+
+            <div class="field-item">
+              <div class="field-label">
+                廠商統編
+                <span class="conf conf-med" id="conf-taxid" style="display:none">請確認</span>
+              </div>
+              <input class="field-input" id="f-taxid" type="text" placeholder="8 位統一編號">
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="field-group">
+              <div class="field-item">
+                <div class="field-label">
+                  銷售金額（未稅）
+                  <span class="conf conf-high" id="conf-amt" style="display:none">自動</span>
+                </div>
+                <input class="field-input" id="f-amount" type="text" placeholder="0">
+              </div>
+              <div class="field-item">
+                <div class="field-label">
+                  營業稅額（5%）
+                  <span class="conf conf-high" id="conf-tax" style="display:none">自動</span>
+                </div>
+                <input class="field-input" id="f-tax" type="text" placeholder="0">
+              </div>
+            </div>
+
+            <div class="field-item">
+              <div class="field-label">
+                應付金額（含稅）
+                <span class="conf conf-high" id="conf-total" style="display:none">計算</span>
+              </div>
+              <input class="field-input" id="f-total" type="text" placeholder="0" style="font-size:15px; font-weight:700;">
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="field-item">
+              <div class="field-label">摘要 / 品項</div>
+              <input class="field-input" id="f-memo" type="text" placeholder="發票品項或說明">
+            </div>
+
+            <div class="field-item">
+              <div class="field-label">課稅別</div>
+              <select class="field-input" id="f-tax-type">
+                <option value="應稅">應稅</option>
+                <option value="零稅率">零稅率</option>
+                <option value="免稅">免稅</option>
+              </select>
+            </div>
+
+          </div>
+
+          <!-- Summary Card -->
+          <div class="result-summary" id="result-summary">
+            <div class="summary-row">
+              <span class="summary-label">未稅金額</span>
+              <span class="summary-val" id="s-amt">—</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">營業稅</span>
+              <span class="summary-val" id="s-tax">—</span>
+            </div>
+            <div class="summary-row summary-total">
+              <span class="summary-label" style="font-weight:700;color:var(--gray-800);">應付合計</span>
+              <span class="summary-val" id="s-total">—</span>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-copy" onclick="copyAll()">
+              📋 複製全部欄位
+            </button>
+            <button class="btn btn-outline" onclick="resetFields()">
+              重填
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 附件提示 -->
+      <div class="card" style="margin-top:16px; border-left: 3px solid var(--green);">
+        <div class="card-body" style="padding:14px 16px;">
+          <div style="font-size:12px; font-weight:700; color:var(--green-dark); margin-bottom:6px;">📎 附件上傳提醒</div>
+          <div style="font-size:12px; color:var(--gray-600); line-height:1.6;">
+            填入 VITAL 後，記得在「附加檔案」區將發票照片一併上傳，作為核帳憑證。建議檔名格式：<span style="font-family:'DM Mono',monospace; background:var(--gray-100); padding:1px 5px; border-radius:3px;">YYYYMMDD_發票號碼.jpg</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="overlay" id="settings-overlay" onclick="closeSettingsOutside(event)">
+  <div class="modal">
+    <div class="modal-title">⚙ Anthropic Claude API 設定</div>
+    <div class="modal-sub">輸入 API Key 後，全公司共用這個工具都不需要再設定。Key 僅存在您的瀏覽器本機，不會上傳至任何伺服器。</div>
+    <input class="modal-input" id="api-key-input" type="password" placeholder="sk-ant-...（貼上你的 Anthropic API Key）" autocomplete="off">
+    <div style="margin-top:12px; font-size:12px; font-weight:600; color:var(--gray-600);">Proxy 網址（選填，解決 CORS 問題）</div>
+    <input class="modal-input" id="proxy-url-input" type="text" placeholder="https://你的worker.workers.dev" autocomplete="off" style="margin-top:6px;">
+    <div class="modal-note">
+      尚未有 API Key？<br>
+      1. 前往 <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> 註冊<br>
+      2. 左側選單 → <strong>API Keys</strong> → <strong>Create Key</strong><br>
+      3. 複製 <code>sk-ant-...</code> 開頭的金鑰貼上<br>
+      <br>
+      如遇到 Failed to fetch，需設定 Proxy 網址（見說明）
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeSettings()">取消</button>
+      <button class="btn btn-primary" onclick="saveApiKey()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="copy-toast" id="copy-toast">✓ 已複製到剪貼簿</div>
+
+<script>
+// ──────────────────────────────────────
+// STATE
+// ──────────────────────────────────────
+let currentFile = null;
+let apiKey = localStorage.getItem('claude_api_key') || '';
+
+// ──────────────────────────────────────
+// INIT
+// ──────────────────────────────────────
+window.onload = () => {
+  updateApiStatus();
+  // API Key 已內建，無需設定
+  setDateFmt(dateFormat);
+};
+
+function updateApiStatus() {
+  const dot = document.getElementById('api-dot');
+  const txt = document.getElementById('api-status-text');
+  if (apiKey) {
+    dot.className = 'api-dot ok';
+    txt.textContent = 'API Key 已設定';
+  } else {
+    dot.className = 'api-dot missing';
+    txt.textContent = '尚未設定 API Key';
+  }
+}
+
+// ──────────────────────────────────────
+// SETTINGS
+// ──────────────────────────────────────
+function openSettings() {
+  document.getElementById('api-key-input').value = apiKey;
+  document.getElementById('proxy-url-input').value = localStorage.getItem('proxy_url') || '';
+  document.getElementById('settings-overlay').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('open');
+}
+function closeSettingsOutside(e) {
+  if (e.target === document.getElementById('settings-overlay')) closeSettings();
+}
+function saveApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val) { alert('請輸入 API Key'); return; }
+  apiKey = val;
+  localStorage.setItem('claude_api_key', val);
+  const proxy = document.getElementById('proxy-url-input').value.trim();
+  if (proxy) localStorage.setItem('proxy_url', proxy);
+  else localStorage.removeItem('proxy_url');
+  updateApiStatus();
+  closeSettings();
+  showToast('✓ 設定已儲存');
+}
+
+// ──────────────────────────────────────
+// UPLOAD
+// ──────────────────────────────────────
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.add('dragover');
+}
+function handleDragLeave() {
+  document.getElementById('upload-zone').classList.remove('dragover');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadFile(f);
+}
+function handleFile(e) {
+  const f = e.target.files[0];
+  if (f) loadFile(f);
+}
+function loadFile(f) {
+  currentFile = f;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = document.getElementById('preview-img');
+    img.src = ev.target.result;
+    img.style.display = 'block';
+    const zone = document.getElementById('upload-zone');
+    zone.classList.add('has-image');
+    zone.style.padding = '8px';
+    zone.querySelector('.upload-icon').style.display = 'none';
+    zone.querySelector('.upload-label').style.display = 'none';
+    zone.querySelector('.upload-hint').style.display = 'none';
+    document.getElementById('upload-replace').style.display = 'block';
+  };
+  reader.readAsDataURL(f);
+  document.getElementById('btn-ocr').disabled = false;
+  document.getElementById('btn-clear').disabled = false;
+  setStatus('已載入：' + f.name, 'info');
+}
+
+// ──────────────────────────────────────
+// ──────────────────────────────────────
+// OCR — Google Gemini Vision (API Key 已內建)
+// ──────────────────────────────────────
+const GEMINI_API_KEY = 'AIzaSyAMD6Rx1sKtQZwSRsOYAAF6wuytMJNH1mI';
+
+async function runOCR() {
+  if (!currentFile) return;
+
+  setStatus('⏳ 傳送至 Gemini Vision 辨識中...', 'info');
+  setProgress(20);
+  document.getElementById('btn-ocr').disabled = true;
+  document.getElementById('raw-toggle').style.display = 'none';
+
+  try {
+    const base64 = await fileToBase64(currentFile);
+    const mediaType = currentFile.type || 'image/jpeg';
+    setProgress(40);
+
+    const prompt = `請仔細辨識這張台灣發票、收據或車票，以JSON格式回傳以下欄位（找不到的欄位填null）：
+{"invoice_date":"民國年/月/日，例如115/05/10，西元年請轉換成民國年","invoice_no":"發票號碼或票號","seller_tax_id":"賣方統一編號8位數字","buyer_tax_id":"買方統一編號8位數字或null","amount_before_tax":"未稅金額純數字","tax_amount":"稅額純數字免稅填0","total_amount":"含稅總金額純數字","items":"主要品項或摘要","tax_type":"應稅或零稅率或免稅","vehicle_plate":"車牌號碼僅計程車才填其他填null"}
+只回傳JSON，不要其他說明文字。`;
+
+    const body = {
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: mediaType, data: base64 } },
+          { text: prompt }
+        ]
+      }]
+    };
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    );
+    setProgress(80);
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'API 錯誤 ' + res.status);
+    }
+
+    const data = await res.json();
+    setProgress(90);
+
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    document.getElementById('raw-text').textContent = rawText;
+    document.getElementById('raw-toggle').style.display = 'block';
+
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('無法解析辨識結果，請重試');
+    const result = JSON.parse(jsonMatch[0]);
+
+    fillFieldsMistral(result);
+    setProgress(100);
+
+  } catch(e) {
+    setStatus('❌ 辨識失敗：' + e.message, 'error');
+    setProgress(0);
+  }
+  document.getElementById('btn-ocr').disabled = false;
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ──────────────────────────────────────
+// FILL FIELDS FROM CLAUDE JSON
+// ──────────────────────────────────────
+
+// ──────────────────────────────────────
+// DETECT RECEIPT TYPE
+// ──────────────────────────────────────
+function detectType(text) {
+  if (/購票證明|臺灣鐵路|Taiwan Railway|票號\s*N\d|乘車區間|乘車日/.test(text)) return 'train_pdf';
+  if (/臺鐵|台鐵|自強|莒光|普悠瑪|太魯閣|Hualien|Taipei|花蓮|台北|高鐵/.test(text)) return 'train';
+  if (/LINE.?GO|TAXI|計程車|TaxiGo|Uber|實付金額/.test(text)) return 'taxi';
+  if (/電子發票證明聯|電子發票/.test(text)) return 'einvoice';
+  if (/停車|parking/i.test(text)) return 'parking';
+  if (/飯店|酒店|hotel|旅館|民宿|房租/i.test(text)) return 'hotel';
+  return 'general';
+}
+
+// ──────────────────────────────────────
+// PARSE INVOICE TEXT (Google Vision)
+// ──────────────────────────────────────
+function parseInvoice(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let filled = 0;
+  const type = detectType(text);
+
+  // ── 1. 日期 ──
+  let dateVal = '';
+  // AD format: 2026-04-28 or 2026/04/28 or 2026.05.04
+  const adMatch = text.match(/20(\d{2})[\.\/\-](\d{2})[\.\/\-](\d{2})/);
+  if (adMatch) {
+    const roc = 100 + parseInt(adMatch[1]);
+    dateVal = roc + '/' + adMatch[2] + '/' + adMatch[3];
+  }
+  // ROC format: 115年03-04月 or 115/01/02
+  if (!dateVal) {
+    const rocMatch = text.match(/(1[01]\d)[年\/\-](\d{1,2})[月\/\-](\d{1,2})/);
+    if (rocMatch) dateVal = rocMatch[1] + '/' + rocMatch[2].padStart(2,'0') + '/' + rocMatch[3].padStart(2,'0');
+  }
+  // Train ticket: 2026.05.04
+  if (!dateVal) {
+    const trainDate = text.match(/(\d{4})\.(\d{2})\.(\d{2})/);
+    if (trainDate) {
+      const roc = parseInt(trainDate[1]) - 1911;
+      dateVal = roc + '/' + trainDate[2] + '/' + trainDate[3];
+    }
+  }
+  if (dateVal) { setAutoField('f-date', 'conf-date', applyDateFmt(dateVal), 'conf-high'); filled++; }
+
+  // ── 2. 發票號碼 ──
+  if (type !== 'train' && type !== 'taxi') {
+    const invMatch = text.match(/[A-Z]{2}[-\s]?\d{8}/);
+    if (invMatch) { setAutoField('f-invoice', 'conf-inv', invMatch[0].replace(/\s/,''), 'conf-high'); filled++; }
+  }
+
+  // ── 3. 統一編號 ──
+  // 電子發票: 賣方 XXXXXXXX 買方 XXXXXXXX
+  const sellerMatch = text.match(/賣方[：:\s]*(\d{8})/);
+  const buyerMatch  = text.match(/買方[：:\s]*(\d{8})/);
+  const taxIdPatterns2 = [
+    /買方統編[：:\s]*(\d{8})/,
+    /統編[：:\s]*(\d{8})/,
+    /營業人統編[：:\s]*(\d{8})/,
+    /統一編號[：:\s]*(\d{8})/,
+  ];
+  let taxId = '';
+  if (sellerMatch) taxId = sellerMatch[1];
+  for (const p of taxIdPatterns2) { const m = text.match(p); if (m) { taxId = m[1]; break; } }
+  if (taxId) { setAutoField('f-taxid', 'conf-taxid', taxId, 'conf-high'); filled++; }
+
+  // ── 4. 金額解析（依類型） ──
+  let amtVal = '', taxVal = '', totalVal = '';
+
+  if (type === 'train_pdf') {
+    // 台鐵購票證明 PDF
+    // 票號
+    const ticketNo = text.match(/票號\s*(N\d{14,20})/);
+    if (ticketNo) { setAutoField('f-invoice', 'conf-inv', ticketNo[1], 'conf-high'); filled++; }
+
+    // 乘車日期 2026/05/06
+    const rideDateMatch = text.match(/乘車日[\s\S]{0,20}?(20\d{2})[\.\/](\d{2})[\.\/](\d{2})/);
+    if (rideDateMatch) {
+      const roc = parseInt(rideDateMatch[1]) - 1911;
+      dateVal = roc + '/' + rideDateMatch[2] + '/' + rideDateMatch[3];
+      setAutoField('f-date', 'conf-date', applyDateFmt(dateVal), 'conf-high'); filled++;
+    }
+
+    // 起訖站：花蓮 > 臺北
+    const routeMatch = text.match(/(花蓮|台北|臺北|台中|臺中|高雄|台南|臺南|新竹|基隆|嘉義|宜蘭|苗栗|彰化|雲林|屏東|台東|臺東|桃園|板橋|松山|七堵|汐止)\s*[>＞→]\s*(花蓮|台北|臺北|台中|臺中|高雄|台南|臺南|新竹|基隆|嘉義|宜蘭|苗栗|彰化|雲林|屏東|台東|臺東|桃園|板橋|松山|七堵|汐止)/);
+    const trainTypeMatch = text.match(/自強|莒光|普悠瑪|太魯閣|區間快|區間/);
+    const trainNoMatch = text.match(/(\d{3,4})\s*車次/);
+    if (routeMatch) {
+      let m = `台鐵 ${routeMatch[1]}→${routeMatch[2]}`;
+      if (trainTypeMatch) m += ` ${trainTypeMatch[0]}`;
+      if (trainNoMatch) m += `${trainNoMatch[1]}次`;
+      document.getElementById('f-memo').value = m; filled++;
+    }
+
+    // 票價：583 元
+    const priceMatch = text.match(/([\d,]+)\s*元/);
+    if (priceMatch) {
+      totalVal = priceMatch[1].replace(/,/g,'');
+      amtVal = totalVal; taxVal = '0';
+    }
+    document.getElementById('f-tax-type').value = '免稅';
+
+  } else if (type === 'train') {
+    // 台鐵實體車票：NT$583 or $583
+    const trainAmt = text.match(/NT\$([\d,]+)|\$([\d,]+)/);
+    if (trainAmt) {
+      totalVal = (trainAmt[1] || trainAmt[2]).replace(/,/g,'');
+      amtVal = totalVal; taxVal = '0';
+    }
+    document.getElementById('f-tax-type').value = '免稅';
+
+  } else if (type === 'taxi') {
+    // 計程車：實付金額 $115
+    const taxiAmt = text.match(/實付金額[\s\S]{0,10}\$([\d,]+)|\$([\d,]+)/);
+    if (taxiAmt) {
+      totalVal = (taxiAmt[1] || taxiAmt[2]).replace(/,/g,'');
+      amtVal = Math.round(parseInt(totalVal)/1.05).toString();
+      taxVal = (parseInt(totalVal) - parseInt(amtVal)).toString();
+    }
+
+  } else {
+    // 電子發票 / 一般收據
+    // 銷售額 / 銷售金額 / 應稅銷售額
+    const amtPatterns = [
+      /銷售額[：:\s]*\$?([\d,]+)/,
+      /銷售金額[：:\s]*\$?([\d,]+)/,
+      /應稅銷售額[：:\s]*\$?([\d,]+)/,
+      /銷售[額额][^\n]{0,5}([\d,]{3,})/,
+      /未稅[：:\s]*\$?([\d,]+)/,
+    ];
+    for (const p of amtPatterns) { const m = text.match(p); if (m) { amtVal = m[1].replace(/,/g,''); break; } }
+
+    // 稅額
+    const taxPatterns2 = [
+      /稅[\s　]*額[：:\s]*\$?([\d,]+)/,
+      /稅額[：:\s]*\$?([\d,]+)/,
+      /營業稅[：:\s]*\$?([\d,]+)/,
+    ];
+    for (const p of taxPatterns2) { const m = text.match(p); if (m) { taxVal = m[1].replace(/,/g,''); break; } }
+
+    // 總計 / 合計 / 應付總金額
+    const totalPatterns2 = [
+      /應付總金額[：:\s]*\$?([\d,]+)/,
+      /總[\s　]*計[：:\s]*\$?([\d,]+)/,
+      /合[\s　]*計[：:\s]*\$?([\d,]+)/,
+      /總計[：:\s]*([\d,]+)/,
+      /總計\s+(\d+)/,
+    ];
+    for (const p of totalPatterns2) { const m = text.match(p); if (m) { totalVal = m[1].replace(/,/g,''); break; } }
+
+    // fallback: 從「總計 XXXX」這種格式
+    if (!totalVal) {
+      const gcTotal = text.match(/總計\D{0,5}([\d]{3,})/);
+      if (gcTotal) totalVal = gcTotal[1];
+    }
+    // 計算補全
+    if (!totalVal && amtVal && taxVal) totalVal = (parseInt(amtVal)+parseInt(taxVal)).toString();
+    if (!amtVal && totalVal && taxVal) amtVal = (parseInt(totalVal)-parseInt(taxVal)).toString();
+    if (amtVal && !taxVal) { taxVal = Math.round(parseInt(amtVal)*0.05).toString(); if (!totalVal) totalVal = (parseInt(amtVal)+parseInt(taxVal)).toString(); }
+  }
+
+  if (amtVal)   { setAutoField('f-amount', 'conf-amt', amtVal, 'conf-high'); filled++; }
+  if (taxVal)   { setAutoField('f-tax', 'conf-tax', taxVal, 'conf-high'); filled++; }
+  if (totalVal) { setAutoField('f-total', 'conf-total', totalVal, 'conf-high'); filled++; }
+
+  // ── 5. 摘要（依類型） ──
+  let memo = '';
+  if (type === 'train') {
+    // 花蓮→台北 自強號
+    const fromTo = text.match(/(花蓮|台北|台中|高雄|台南|新竹|基隆|嘉義|宜蘭|苗栗|彰化|雲林|屏東|台東|桃園)[\s\S]{0,20}(花蓮|台北|台中|高雄|台南|新竹|基隆|嘉義|宜蘭|苗栗|彰化|雲林|屏東|台東|桃園)/);
+    const trainType = text.match(/自強|莒光|普悠瑪|太魯閣|區間/);
+    if (fromTo) memo = `台鐵車票 ${fromTo[1]}→${fromTo[2]}`;
+    if (trainType) memo += ` ${trainType[0]}`;
+  } else if (type === 'taxi') {
+    memo = 'LINE GO 計程車';
+    const route = text.match(/([\u4e00-\u9fa5]{2,}市[\u4e00-\u9fa5]+路[\u4e00-\u9fa5\d]+號)/);
+    if (route) memo += ` ${route[1]}`;
+  } else if (type === 'hotel') {
+    const hotelName = lines.find(l => /飯店|酒店|hotel|旅館|民宿/i.test(l));
+    memo = hotelName ? hotelName.replace(/電子發票.*/, '').trim() : '住宿費';
+  } else if (type === 'parking') {
+    memo = '停車費';
+  } else {
+    // 電子發票：取公司名或品項
+    const skipRe = /電子發票|統編|統一編號|發票號碼|隨機碼|賣方|買方|總計|合計|稅額|TEL|電話|地址|格式/i;
+    const candidates = lines.filter(l => l.length >= 2 && l.length <= 20 && !skipRe.test(l) && !/^[\d\s\$\-\/\.,:]+$/.test(l));
+    memo = candidates.slice(0,2).join(' ');
+  }
+  if (memo) { document.getElementById('f-memo').value = memo; filled++; }
+
+  updateSummary();
+  document.getElementById('result-summary').classList.add('show');
+  document.getElementById('field-count').textContent = `已辨識 ${filled} 個欄位（${
+    type==='train_pdf'?'台鐵購票證明':type==='train'?'台鐵車票':type==='taxi'?'計程車收據':type==='hotel'?'住宿發票':type==='parking'?'停車費':type==='einvoice'?'電子發票':'一般收據'
+  }）`;
+  document.getElementById('field-count').style.color = filled >= 4 ? '#1a7a5e' : '#c8720a';
+  const quality = filled >= 5 ? 'success' : filled >= 3 ? 'warn' : 'error';
+  setStatus(filled >= 5
+    ? `✓ 辨識完成，共填入 ${filled} 個欄位。請確認橙色欄位`
+    : `⚠ 辨識到 ${filled} 個欄位，部分欄位需手動補齊`, quality);
+}
+
+function fillFields(r) {
+  let filled = 0;
+
+  if (r.invoice_date) { setAutoField('f-date', 'conf-date', r.invoice_date, 'conf-high'); filled++; }
+  if (r.invoice_no)   { setAutoField('f-invoice', 'conf-inv', r.invoice_no, 'conf-high'); filled++; }
+
+  const taxId = r.seller_tax_id || r.buyer_tax_id;
+  if (taxId) { setAutoField('f-taxid', 'conf-taxid', taxId, taxId.length === 8 ? 'conf-high' : 'conf-med'); filled++; }
+
+  if (r.amount_before_tax) { setAutoField('f-amount', 'conf-amt', String(r.amount_before_tax), 'conf-high'); filled++; }
+
+  if (r.tax_amount) {
+    setAutoField('f-tax', 'conf-tax', String(r.tax_amount), 'conf-high'); filled++;
+  } else if (r.amount_before_tax) {
+    setAutoField('f-tax', 'conf-tax', String(Math.round(parseInt(r.amount_before_tax) * 0.05)), 'conf-high'); filled++;
+  }
+
+  const total = r.total_amount || (r.amount_before_tax && r.tax_amount
+    ? parseInt(r.amount_before_tax) + parseInt(r.tax_amount) : null);
+  if (total) { setAutoField('f-total', 'conf-total', String(total), 'conf-high'); filled++; }
+
+  if (r.items) { document.getElementById('f-memo').value = r.items; filled++; }
+  if (r.tax_type) {
+    const sel = document.getElementById('f-tax-type');
+    const opt = [...sel.options].find(o => o.value === r.tax_type);
+    if (opt) sel.value = r.tax_type;
+  }
+
+  updateSummary();
+  document.getElementById('result-summary').classList.add('show');
+  document.getElementById('field-count').textContent = `已辨識 ${filled} 個欄位`;
+  document.getElementById('field-count').style.color = filled >= 5 ? '#1a7a5e' : '#c8720a';
+
+  const quality = filled >= 5 ? 'success' : filled >= 3 ? 'warn' : 'error';
+  const msg = filled >= 5
+    ? `✓ Claude Vision 辨識完成，共填入 ${filled} 個欄位。請確認橙色標示的欄位`
+    : `⚠ 辨識到 ${filled} 個欄位，部分欄位需手動補齊`;
+  setStatus(msg, quality);
+}
+
+function setAutoField(fieldId, confId, value, confClass) {
+  const el = document.getElementById(fieldId);
+  const conf = document.getElementById(confId);
+  el.value = value;
+  el.className = 'field-input ' + (confClass === 'conf-med' ? 'needs-check' : 'auto-filled');
+  if (conf) { conf.style.display = 'inline'; conf.className = 'conf ' + confClass; }
+}
+
+// ── Date format toggle ──
+let dateFormat = localStorage.getItem('date_fmt') || 'roc'; // 'roc' or 'ad'
+
+function setDateFmt(fmt) {
+  const prev = dateFormat;
+  dateFormat = fmt;
+  localStorage.setItem('date_fmt', fmt);
+  document.getElementById('fmt-roc').style.background = fmt==='roc' ? '#1a7a5e' : 'var(--gray-100)';
+  document.getElementById('fmt-roc').style.color = fmt==='roc' ? 'white' : 'var(--gray-400)';
+  document.getElementById('fmt-ad').style.background = fmt==='ad' ? '#1a7a5e' : 'var(--gray-100)';
+  document.getElementById('fmt-ad').style.color = fmt==='ad' ? 'white' : 'var(--gray-400)';
+
+  // Convert existing value if any
+  const el = document.getElementById('f-date');
+  if (!el.value) return;
+  if (prev === 'roc' && fmt === 'ad') {
+    el.value = rocToAd(el.value);
+    document.getElementById('f-date').placeholder = '2026/05/10';
+  } else if (prev === 'ad' && fmt === 'roc') {
+    el.value = adToRoc(el.value);
+    document.getElementById('f-date').placeholder = '115/05/10';
+  }
+}
+
+function rocToAd(val) {
+  const m = val.match(/(\d{2,3})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (!m) return val;
+  const yr = parseInt(m[1]) + 1911;
+  return yr + '/' + m[2].padStart(2,'0') + '/' + m[3].padStart(2,'0');
+}
+
+function adToRoc(val) {
+  const m = val.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (!m) return val;
+  const yr = parseInt(m[1]) - 1911;
+  return yr + '/' + m[2].padStart(2,'0') + '/' + m[3].padStart(2,'0');
+}
+
+function applyDateFmt(rocVal) {
+  // Always store as ROC internally, convert on display
+  if (dateFormat === 'ad') return rocToAd(rocVal);
+  return rocVal;
+}
+
+// ──────────────────────────────────────
+// FILL FIELDS FROM MISTRAL JSON
+// ──────────────────────────────────────
+function fillFieldsMistral(r) {
+  let filled = 0;
+
+  if (r.invoice_date) { setAutoField('f-date', 'conf-date', applyDateFmt(r.invoice_date), 'conf-high'); filled++; }
+  if (r.invoice_no)   { setAutoField('f-invoice', 'conf-inv', r.invoice_no, 'conf-high'); filled++; }
+
+  const taxId = r.seller_tax_id || r.buyer_tax_id;
+  if (taxId) { setAutoField('f-taxid', 'conf-taxid', String(taxId), taxId.toString().length === 8 ? 'conf-high' : 'conf-med'); filled++; }
+
+  if (r.amount_before_tax) { setAutoField('f-amount', 'conf-amt', String(r.amount_before_tax), 'conf-high'); filled++; }
+  if (r.tax_amount !== null && r.tax_amount !== undefined) { setAutoField('f-tax', 'conf-tax', String(r.tax_amount), 'conf-high'); filled++; }
+  if (r.total_amount) { setAutoField('f-total', 'conf-total', String(r.total_amount), 'conf-high'); filled++; }
+
+  // items + vehicle_plate
+  let memo = r.items || '';
+  if (r.vehicle_plate) memo += (memo ? ' 車號：' : '車號：') + r.vehicle_plate;
+  if (memo) { document.getElementById('f-memo').value = memo; filled++; }
+
+  if (r.tax_type) {
+    const sel = document.getElementById('f-tax-type');
+    const opt = [...sel.options].find(o => o.value === r.tax_type);
+    if (opt) sel.value = r.tax_type;
+  }
+
+  updateSummary();
+  document.getElementById('result-summary').classList.add('show');
+  document.getElementById('field-count').textContent = `已辨識 ${filled} 個欄位`;
+  document.getElementById('field-count').style.color = filled >= 5 ? '#1a7a5e' : '#c8720a';
+  const quality = filled >= 5 ? 'success' : filled >= 3 ? 'warn' : 'error';
+  setStatus(filled >= 5
+    ? `✓ Mistral Vision 辨識完成，共填入 ${filled} 個欄位。請確認橙色欄位`
+    : `⚠ 辨識到 ${filled} 個欄位，部分欄位需手動補齊`, quality);
+}
+
+function updateSummary() {
+  const amt = parseInt(document.getElementById('f-amount').value.replace(/,/g,'')) || 0;
+  const tax = parseInt(document.getElementById('f-tax').value.replace(/,/g,'')) || 0;
+  const total = parseInt(document.getElementById('f-total').value.replace(/,/g,'')) || (amt + tax);
+  document.getElementById('s-amt').textContent = amt ? 'NT$ ' + amt.toLocaleString() : '—';
+  document.getElementById('s-tax').textContent = tax ? 'NT$ ' + tax.toLocaleString() : '—';
+  document.getElementById('s-total').textContent = total ? 'NT$ ' + total.toLocaleString() : '—';
+}
+
+// ──────────────────────────────────────
+// UI HELPERS
+// ──────────────────────────────────────
+function setStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + type;
+}
+function setProgress(pct) {
+  const wrap = document.getElementById('progress-wrap');
+  const fill = document.getElementById('progress-fill');
+  wrap.style.display = 'block';
+  fill.style.width = pct + '%';
+  if (pct >= 100) setTimeout(() => wrap.style.display = 'none', 1000);
+  if (pct <= 0) wrap.style.display = 'none';
+}
+function toggleRaw() {
+  const el = document.getElementById('raw-text');
+  const toggle = document.getElementById('raw-toggle');
+  if (el.style.display === 'none' || !el.style.display) {
+    el.style.display = 'block';
+    toggle.textContent = '▲ 隱藏原始文字';
+  } else {
+    el.style.display = 'none';
+    toggle.textContent = '▼ 查看原始辨識文字';
+  }
+}
+function clearAll() {
+  currentFile = null;
+  document.getElementById('preview-img').style.display = 'none';
+  const zone = document.getElementById('upload-zone');
+  zone.classList.remove('has-image');
+  zone.style.padding = '';
+  zone.querySelectorAll('.upload-icon,.upload-label,.upload-hint').forEach(e => e.style.display = '');
+  document.getElementById('upload-replace').style.display = 'none';
+  document.getElementById('btn-ocr').disabled = true;
+  document.getElementById('btn-clear').disabled = true;
+  document.getElementById('status').className = 'status';
+  document.getElementById('progress-wrap').style.display = 'none';
+  document.getElementById('raw-text').style.display = 'none';
+  document.getElementById('raw-toggle').style.display = 'none';
+  resetFields();
+  document.getElementById('field-count').textContent = '尚未辨識';
+  document.getElementById('field-count').style.color = '';
+  document.getElementById('file-input').value = '';
+}
+function resetFields() {
+  ['f-date','f-invoice','f-taxid','f-amount','f-tax','f-total','f-memo'].forEach(id => {
+    document.getElementById(id).value = '';
+    document.getElementById(id).className = 'field-input';
+  });
+  ['conf-date','conf-inv','conf-taxid','conf-amt','conf-tax','conf-total'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  document.getElementById('result-summary').classList.remove('show');
+}
+function copyAll() {
+  const rows = [
+    ['開立日期', document.getElementById('f-date').value],
+    ['字軌/憑證號碼', document.getElementById('f-invoice').value],
+    ['廠商統編', document.getElementById('f-taxid').value],
+    ['銷售金額（未稅）', document.getElementById('f-amount').value],
+    ['營業稅額', document.getElementById('f-tax').value],
+    ['應付金額（含稅）', document.getElementById('f-total').value],
+    ['摘要', document.getElementById('f-memo').value],
+    ['課稅別', document.getElementById('f-tax-type').value],
+  ];
+  const text = rows.filter(([,v]) => v).map(([k,v]) => `${k}：${v}`).join('\n');
+  navigator.clipboard.writeText(text).then(() => showToast('✓ 已複製！開啟 VITAL 後依序貼入'));
+}
+function showToast(msg) {
+  const t = document.getElementById('copy-toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ──────────────────────────────────────
+// INPUT EVENTS — live recalc
+// ──────────────────────────────────────
+['f-amount','f-tax','f-total'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateSummary);
+});
+</script>
+</body>
+</html>
