@@ -311,7 +311,7 @@
     <div class="header-logo-icon">📄</div>
     <div>
       <div class="header-logo-text">發票辨識助手</div>
-      <div class="header-logo-sub">VITAL ERP 報帳工具 × Claude Vision</div>
+      <div class="header-logo-sub">VITAL ERP 報帳工具 × Google Vision</div>
     </div>
   </div>
   <div class="header-actions">
@@ -333,7 +333,7 @@
         <div class="card-head">
           <span class="card-head-icon">📷</span>
           <span class="card-head-title">上傳發票</span>
-          <span class="card-head-sub">Claude Vision AI</span>
+          <span class="card-head-sub">Google Cloud Vision</span>
         </div>
         <div class="card-body">
           <div class="upload-zone" id="upload-zone"
@@ -530,12 +530,15 @@
     <div class="modal-title">⚙ Anthropic Claude API 設定</div>
     <div class="modal-sub">輸入 API Key 後，全公司共用這個工具都不需要再設定。Key 僅存在您的瀏覽器本機，不會上傳至任何伺服器。</div>
     <input class="modal-input" id="api-key-input" type="password" placeholder="sk-ant-...（貼上你的 Anthropic API Key）" autocomplete="off">
+    <div style="margin-top:12px; font-size:12px; font-weight:600; color:var(--gray-600);">Proxy 網址（選填，解決 CORS 問題）</div>
+    <input class="modal-input" id="proxy-url-input" type="text" placeholder="https://你的worker.workers.dev" autocomplete="off" style="margin-top:6px;">
     <div class="modal-note">
       尚未有 API Key？<br>
       1. 前往 <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> 註冊<br>
       2. 左側選單 → <strong>API Keys</strong> → <strong>Create Key</strong><br>
       3. 複製 <code>sk-ant-...</code> 開頭的金鑰貼上<br>
-      新帳號有 <strong>免費額度</strong>，不需綁信用卡即可開始使用
+      <br>
+      如遇到 Failed to fetch，需設定 Proxy 網址（見說明）
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeSettings()">取消</button>
@@ -559,7 +562,7 @@ let apiKey = localStorage.getItem('claude_api_key') || '';
 // ──────────────────────────────────────
 window.onload = () => {
   updateApiStatus();
-  if (!apiKey) setTimeout(() => openSettings(), 600);
+  // API Key 已內建，無需設定
 };
 
 function updateApiStatus() {
@@ -579,6 +582,7 @@ function updateApiStatus() {
 // ──────────────────────────────────────
 function openSettings() {
   document.getElementById('api-key-input').value = apiKey;
+  document.getElementById('proxy-url-input').value = localStorage.getItem('proxy_url') || '';
   document.getElementById('settings-overlay').classList.add('open');
 }
 function closeSettings() {
@@ -592,9 +596,12 @@ function saveApiKey() {
   if (!val) { alert('請輸入 API Key'); return; }
   apiKey = val;
   localStorage.setItem('claude_api_key', val);
+  const proxy = document.getElementById('proxy-url-input').value.trim();
+  if (proxy) localStorage.setItem('proxy_url', proxy);
+  else localStorage.removeItem('proxy_url');
   updateApiStatus();
   closeSettings();
-  showToast('✓ API Key 已儲存');
+  showToast('✓ 設定已儲存');
 }
 
 // ──────────────────────────────────────
@@ -639,63 +646,37 @@ function loadFile(f) {
 }
 
 // ──────────────────────────────────────
-// OCR — Claude Vision API
+// OCR — Google Cloud Vision (API Key 已內建)
 // ──────────────────────────────────────
+const GCV_API_KEY = 'AIzaSyDzxzP58v_vjhVspxmhNcI5Qm-ELrRRSVE';
+
 async function runOCR() {
   if (!currentFile) return;
-  if (!apiKey) { openSettings(); return; }
 
-  setStatus('⏳ 傳送至 Claude Vision 辨識中...', 'info');
+  setStatus('⏳ 傳送至 Google Cloud Vision 辨識中...', 'info');
   setProgress(20);
   document.getElementById('btn-ocr').disabled = true;
   document.getElementById('raw-toggle').style.display = 'none';
 
   try {
     const base64 = await fileToBase64(currentFile);
-    const mediaType = currentFile.type || 'image/jpeg';
     setProgress(40);
 
     const body = {
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: mediaType, data: base64 }
-          },
-          {
-            type: 'text',
-            text: `請仔細辨識這張台灣發票或收據，以JSON格式回傳以下欄位（找不到的欄位填null）：
-{
-  "invoice_date": "民國年/月/日，例如113/05/10",
-  "invoice_no": "發票號碼，例如AB-12345678",
-  "seller_tax_id": "賣方統一編號（8位數字）",
-  "buyer_tax_id": "買方統一編號（8位數字，若無填null）",
-  "amount_before_tax": "未稅金額（純數字）",
-  "tax_amount": "營業稅額（純數字）",
-  "total_amount": "含稅總金額（純數字）",
-  "items": "主要品項描述（簡短）",
-  "tax_type": "應稅/零稅率/免稅"
-}
-只回傳JSON，不要其他說明文字。`
-          }
+      requests: [{
+        image: { content: base64 },
+        features: [
+          { type: 'DOCUMENT_TEXT_DETECTION', maxResults: 1 },
+          { type: 'TEXT_DETECTION', maxResults: 1 }
         ]
       }]
     };
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify(body)
-    });
-    setProgress(80);
+    const res = await fetch(
+      `https://vision.googleapis.com/v1/images:annotate?key=${GCV_API_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    );
+    setProgress(70);
 
     if (!res.ok) {
       const err = await res.json();
@@ -705,16 +686,21 @@ async function runOCR() {
     const data = await res.json();
     setProgress(90);
 
-    const rawText = data.content?.[0]?.text || '';
-    document.getElementById('raw-text').textContent = rawText;
+    const fullText = data.responses?.[0]?.fullTextAnnotation?.text
+      || data.responses?.[0]?.textAnnotations?.[0]?.description
+      || '';
+
+    if (!fullText) {
+      setStatus('⚠ 未能辨識出文字，請確認圖片清晰度', 'warn');
+      setProgress(0);
+      document.getElementById('btn-ocr').disabled = false;
+      return;
+    }
+
+    document.getElementById('raw-text').textContent = fullText;
     document.getElementById('raw-toggle').style.display = 'block';
 
-    // Parse JSON from Claude response
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('無法解析辨識結果，請重試');
-    const result = JSON.parse(jsonMatch[0]);
-
-    fillFields(result);
+    parseInvoice(fullText);
     setProgress(100);
 
   } catch(e) {
@@ -736,6 +722,83 @@ function fileToBase64(file) {
 // ──────────────────────────────────────
 // FILL FIELDS FROM CLAUDE JSON
 // ──────────────────────────────────────
+
+// ──────────────────────────────────────
+// PARSE INVOICE TEXT (Google Vision)
+// ──────────────────────────────────────
+function parseInvoice(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let filled = 0;
+
+  // 1. 日期
+  const datePatterns = [
+    /(?:開立日期|日期)[：:\s]*(\d{2,3})[\/\.\-年](\d{1,2})[\/\.\-月](\d{1,2})/,
+    /(\d{3})[\/\-](\d{2})[\/\-](\d{2})/,
+    /(\d{4})[\/\-](\d{2})[\/\-](\d{2})/,
+  ];
+  for (const p of datePatterns) {
+    const m = text.match(p);
+    if (m) {
+      let yr = parseInt(m[1]);
+      if (yr > 1900) yr = yr - 1911;
+      const d = yr + '/' + m[2] + '/' + m[3];
+      setAutoField('f-date', 'conf-date', d, 'conf-high'); filled++; break;
+    }
+  }
+
+  // 2. 發票號碼
+  const invMatch = text.match(/[A-Z]{2}[-\s]?\d{8}/);
+  if (invMatch) { setAutoField('f-invoice', 'conf-inv', invMatch[0].replace(/\s/,''), 'conf-high'); filled++; }
+
+  // 3. 統一編號
+  const taxIdPatterns = [
+    /統一編號[：:\s]*(\d{8})/,
+    /買方統編[：:\s]*(\d{8})/,
+    /賣方統編[：:\s]*(\d{8})/,
+  ];
+  for (const p of taxIdPatterns) {
+    const m = text.match(p);
+    if (m) { setAutoField('f-taxid', 'conf-taxid', m[1], 'conf-med'); filled++; break; }
+  }
+  if (!document.getElementById('f-taxid').value) {
+    const allEight = [...text.matchAll(/\b(\d{8})\b/g)].map(m => m[1]);
+    if (allEight.length) { setAutoField('f-taxid', 'conf-taxid', allEight[0], 'conf-med'); filled++; }
+  }
+
+  // 4. 未稅金額
+  const amtPatterns = [/銷售金額[：:\s]*([\d,]+)/,/未稅[：:\s]*([\d,]+)/,/小計[：:\s]*([\d,]+)/,/金額[：:\s]*([\d,]+)/];
+  let amtVal = '';
+  for (const p of amtPatterns) { const m = text.match(p); if (m) { amtVal = m[1].replace(/,/g,''); break; } }
+  if (amtVal) { setAutoField('f-amount', 'conf-amt', amtVal, 'conf-high'); filled++; }
+
+  // 5. 稅額
+  const taxPatterns = [/稅額[：:\s]*([\d,]+)/,/營業稅[：:\s]*([\d,]+)/];
+  let taxVal = '';
+  for (const p of taxPatterns) { const m = text.match(p); if (m) { taxVal = m[1].replace(/,/g,''); break; } }
+  if (taxVal) { setAutoField('f-tax', 'conf-tax', taxVal, 'conf-high'); filled++; }
+  else if (amtVal) { taxVal = Math.round(parseInt(amtVal)*0.05).toString(); setAutoField('f-tax', 'conf-tax', taxVal, 'conf-high'); filled++; }
+
+  // 6. 合計
+  const totalPatterns = [/合計[：:\s]*([\d,]+)/,/總計[：:\s]*([\d,]+)/,/總金額[：:\s]*([\d,]+)/,/應付金額[：:\s]*([\d,]+)/];
+  let totalVal = '';
+  for (const p of totalPatterns) { const m = text.match(p); if (m) { totalVal = m[1].replace(/,/g,''); break; } }
+  if (!totalVal && amtVal && taxVal) totalVal = (parseInt(amtVal)+parseInt(taxVal)).toString();
+  if (!totalVal && amtVal) totalVal = Math.round(parseInt(amtVal)*1.05).toString();
+  if (totalVal) { setAutoField('f-total', 'conf-total', totalVal, 'conf-high'); filled++; }
+
+  // 7. 摘要
+  const skipRe = /統一編號|發票|日期|金額|稅額|合計|總計|電話|地址|TEL|FAX/i;
+  const memoLines = lines.filter(l => l.length >= 2 && !skipRe.test(l) && !/^\d[\d,.]*$/.test(l)).slice(0,2);
+  if (memoLines.length) { document.getElementById('f-memo').value = memoLines.join('、'); filled++; }
+
+  updateSummary();
+  document.getElementById('result-summary').classList.add('show');
+  document.getElementById('field-count').textContent = `已辨識 ${filled} 個欄位`;
+  document.getElementById('field-count').style.color = filled >= 4 ? '#1a7a5e' : '#c8720a';
+  const quality = filled >= 5 ? 'success' : filled >= 3 ? 'warn' : 'error';
+  setStatus(filled >= 5 ? `✓ 辨識完成，共填入 ${filled} 個欄位。請確認橙色欄位` : `⚠ 辨識到 ${filled} 個欄位，部分欄位需手動補齊`, quality);
+}
+
 function fillFields(r) {
   let filled = 0;
 
