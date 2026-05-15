@@ -311,7 +311,7 @@
     <div class="header-logo-icon">📄</div>
     <div>
       <div class="header-logo-text">發票辨識助手</div>
-      <div class="header-logo-sub">VITAL ERP 報帳工具 × Google Vision</div>
+      <div class="header-logo-sub">VITAL ERP 報帳工具 × Mistral Vision</div>
     </div>
   </div>
   <div class="header-actions">
@@ -333,7 +333,7 @@
         <div class="card-head">
           <span class="card-head-icon">📷</span>
           <span class="card-head-title">上傳發票</span>
-          <span class="card-head-sub">Google Cloud Vision</span>
+          <span class="card-head-sub">Mistral Pixtral Vision</span>
         </div>
         <div class="card-body">
           <div class="upload-zone" id="upload-zone"
@@ -417,6 +417,10 @@
                 <div class="field-label">
                   開立日期
                   <span class="conf conf-high" id="conf-date" style="display:none">自動</span>
+                  <span style="margin-left:auto; display:flex; gap:4px;">
+                    <span id="fmt-roc" onclick="setDateFmt('roc')" style="cursor:pointer;font-size:10px;padding:2px 6px;border-radius:10px;background:#1a7a5e;color:white;font-weight:600;">民國</span>
+                    <span id="fmt-ad" onclick="setDateFmt('ad')" style="cursor:pointer;font-size:10px;padding:2px 6px;border-radius:10px;background:var(--gray-100);color:var(--gray-400);font-weight:600;">西元</span>
+                  </span>
                 </div>
                 <input class="field-input" id="f-date" type="text" placeholder="113/05/10">
               </div>
@@ -563,6 +567,7 @@ let apiKey = localStorage.getItem('claude_api_key') || '';
 window.onload = () => {
   updateApiStatus();
   // API Key 已內建，無需設定
+  setDateFmt(dateFormat);
 };
 
 function updateApiStatus() {
@@ -646,61 +651,67 @@ function loadFile(f) {
 }
 
 // ──────────────────────────────────────
-// OCR — Google Cloud Vision (API Key 已內建)
 // ──────────────────────────────────────
-const GCV_API_KEY = 'AIzaSyDzxzP58v_vjhVspxmhNcI5Qm-ELrRRSVE';
+// OCR — Mistral Pixtral Vision (API Key 已內建)
+// ──────────────────────────────────────
+const MISTRAL_API_KEY = 'gQXWTlMCv8fvoabG5By0A2OxlM0YThsd';
 
 async function runOCR() {
   if (!currentFile) return;
 
-  setStatus('⏳ 傳送至 Google Cloud Vision 辨識中...', 'info');
+  setStatus('⏳ 傳送至 Mistral Vision 辨識中...', 'info');
   setProgress(20);
   document.getElementById('btn-ocr').disabled = true;
   document.getElementById('raw-toggle').style.display = 'none';
 
   try {
     const base64 = await fileToBase64(currentFile);
+    const mediaType = currentFile.type || 'image/jpeg';
     setProgress(40);
 
+    const prompt = `請仔細辨識這張台灣發票、收據或車票，以JSON格式回傳以下欄位（找不到的欄位填null）：
+{"invoice_date":"民國年/月/日，例如115/05/10（西元年請轉換成民國年）","invoice_no":"發票號碼或票號","seller_tax_id":"賣方統一編號8位數字","buyer_tax_id":"買方統一編號8位數字或null","amount_before_tax":"未稅金額純數字","tax_amount":"稅額純數字免稅填0","total_amount":"含稅總金額純數字","items":"主要品項或摘要","tax_type":"應稅或零稅率或免稅","vehicle_plate":"車牌號碼僅計程車才填其他null"}
+只回傳JSON，不要其他說明文字。`;
+
     const body = {
-      requests: [{
-        image: { content: base64 },
-        features: [
-          { type: 'DOCUMENT_TEXT_DETECTION', maxResults: 1 },
-          { type: 'TEXT_DETECTION', maxResults: 1 }
+      model: 'pixtral-12b-2409',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:${mediaType};base64,${base64}` } },
+          { type: 'text', text: prompt }
         ]
       }]
     };
 
-    const res = await fetch(
-      `https://vision.googleapis.com/v1/images:annotate?key=${GCV_API_KEY}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    );
-    setProgress(70);
+    const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${MISTRAL_API_KEY}`
+      },
+      body: JSON.stringify(body)
+    });
+    setProgress(80);
 
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.error?.message || 'API 錯誤 ' + res.status);
+      throw new Error(err.message || 'API 錯誤 ' + res.status);
     }
 
     const data = await res.json();
     setProgress(90);
 
-    const fullText = data.responses?.[0]?.fullTextAnnotation?.text
-      || data.responses?.[0]?.textAnnotations?.[0]?.description
-      || '';
-
-    if (!fullText) {
-      setStatus('⚠ 未能辨識出文字，請確認圖片清晰度', 'warn');
-      setProgress(0);
-      document.getElementById('btn-ocr').disabled = false;
-      return;
-    }
-
-    document.getElementById('raw-text').textContent = fullText;
+    const rawText = data.choices?.[0]?.message?.content || '';
+    document.getElementById('raw-text').textContent = rawText;
     document.getElementById('raw-toggle').style.display = 'block';
 
-    parseInvoice(fullText);
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('無法解析辨識結果，請重試');
+    const result = JSON.parse(jsonMatch[0]);
+
+    fillFieldsMistral(result);
     setProgress(100);
 
   } catch(e) {
@@ -765,7 +776,7 @@ function parseInvoice(text) {
       dateVal = roc + '/' + trainDate[2] + '/' + trainDate[3];
     }
   }
-  if (dateVal) { setAutoField('f-date', 'conf-date', dateVal, 'conf-high'); filled++; }
+  if (dateVal) { setAutoField('f-date', 'conf-date', applyDateFmt(dateVal), 'conf-high'); filled++; }
 
   // ── 2. 發票號碼 ──
   if (type !== 'train' && type !== 'taxi') {
@@ -802,7 +813,7 @@ function parseInvoice(text) {
     if (rideDateMatch) {
       const roc = parseInt(rideDateMatch[1]) - 1911;
       dateVal = roc + '/' + rideDateMatch[2] + '/' + rideDateMatch[3];
-      setAutoField('f-date', 'conf-date', dateVal, 'conf-high'); filled++;
+      setAutoField('f-date', 'conf-date', applyDateFmt(dateVal), 'conf-high'); filled++;
     }
 
     // 起訖站：花蓮 > 臺北
@@ -970,6 +981,87 @@ function setAutoField(fieldId, confId, value, confClass) {
   el.value = value;
   el.className = 'field-input ' + (confClass === 'conf-med' ? 'needs-check' : 'auto-filled');
   if (conf) { conf.style.display = 'inline'; conf.className = 'conf ' + confClass; }
+}
+
+// ── Date format toggle ──
+let dateFormat = localStorage.getItem('date_fmt') || 'roc'; // 'roc' or 'ad'
+
+function setDateFmt(fmt) {
+  const prev = dateFormat;
+  dateFormat = fmt;
+  localStorage.setItem('date_fmt', fmt);
+  document.getElementById('fmt-roc').style.background = fmt==='roc' ? '#1a7a5e' : 'var(--gray-100)';
+  document.getElementById('fmt-roc').style.color = fmt==='roc' ? 'white' : 'var(--gray-400)';
+  document.getElementById('fmt-ad').style.background = fmt==='ad' ? '#1a7a5e' : 'var(--gray-100)';
+  document.getElementById('fmt-ad').style.color = fmt==='ad' ? 'white' : 'var(--gray-400)';
+
+  // Convert existing value if any
+  const el = document.getElementById('f-date');
+  if (!el.value) return;
+  if (prev === 'roc' && fmt === 'ad') {
+    el.value = rocToAd(el.value);
+    document.getElementById('f-date').placeholder = '2026/05/10';
+  } else if (prev === 'ad' && fmt === 'roc') {
+    el.value = adToRoc(el.value);
+    document.getElementById('f-date').placeholder = '115/05/10';
+  }
+}
+
+function rocToAd(val) {
+  const m = val.match(/(\d{2,3})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (!m) return val;
+  const yr = parseInt(m[1]) + 1911;
+  return yr + '/' + m[2].padStart(2,'0') + '/' + m[3].padStart(2,'0');
+}
+
+function adToRoc(val) {
+  const m = val.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (!m) return val;
+  const yr = parseInt(m[1]) - 1911;
+  return yr + '/' + m[2].padStart(2,'0') + '/' + m[3].padStart(2,'0');
+}
+
+function applyDateFmt(rocVal) {
+  // Always store as ROC internally, convert on display
+  if (dateFormat === 'ad') return rocToAd(rocVal);
+  return rocVal;
+}
+
+// ──────────────────────────────────────
+// FILL FIELDS FROM MISTRAL JSON
+// ──────────────────────────────────────
+function fillFieldsMistral(r) {
+  let filled = 0;
+
+  if (r.invoice_date) { setAutoField('f-date', 'conf-date', applyDateFmt(r.invoice_date), 'conf-high'); filled++; }
+  if (r.invoice_no)   { setAutoField('f-invoice', 'conf-inv', r.invoice_no, 'conf-high'); filled++; }
+
+  const taxId = r.seller_tax_id || r.buyer_tax_id;
+  if (taxId) { setAutoField('f-taxid', 'conf-taxid', String(taxId), taxId.toString().length === 8 ? 'conf-high' : 'conf-med'); filled++; }
+
+  if (r.amount_before_tax) { setAutoField('f-amount', 'conf-amt', String(r.amount_before_tax), 'conf-high'); filled++; }
+  if (r.tax_amount !== null && r.tax_amount !== undefined) { setAutoField('f-tax', 'conf-tax', String(r.tax_amount), 'conf-high'); filled++; }
+  if (r.total_amount) { setAutoField('f-total', 'conf-total', String(r.total_amount), 'conf-high'); filled++; }
+
+  // items + vehicle_plate
+  let memo = r.items || '';
+  if (r.vehicle_plate) memo += (memo ? ' 車號：' : '車號：') + r.vehicle_plate;
+  if (memo) { document.getElementById('f-memo').value = memo; filled++; }
+
+  if (r.tax_type) {
+    const sel = document.getElementById('f-tax-type');
+    const opt = [...sel.options].find(o => o.value === r.tax_type);
+    if (opt) sel.value = r.tax_type;
+  }
+
+  updateSummary();
+  document.getElementById('result-summary').classList.add('show');
+  document.getElementById('field-count').textContent = `已辨識 ${filled} 個欄位`;
+  document.getElementById('field-count').style.color = filled >= 5 ? '#1a7a5e' : '#c8720a';
+  const quality = filled >= 5 ? 'success' : filled >= 3 ? 'warn' : 'error';
+  setStatus(filled >= 5
+    ? `✓ Mistral Vision 辨識完成，共填入 ${filled} 個欄位。請確認橙色欄位`
+    : `⚠ 辨識到 ${filled} 個欄位，部分欄位需手動補齊`, quality);
 }
 
 function updateSummary() {
